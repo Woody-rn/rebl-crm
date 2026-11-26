@@ -1,0 +1,215 @@
+databaseChangeLog:
+  - changeSet:
+      id: 010-01-create-tasks
+      author: reblcrm
+      comment: "Задачи и напоминания. Полиморфная связь с сущностями через entity_type + entity_id"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: tasks
+      changes:
+        - createTable:
+            tableName: tasks
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_tasks_tenant
+                    references: tenants(id)
+              - column:
+                  name: title
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: TEXT
+              - column:
+                  name: status
+                  type: VARCHAR(20)
+                  defaultValue: PENDING
+                  remarks: "PENDING / IN_PROGRESS / DONE / CANCELED"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: priority
+                  type: VARCHAR(10)
+                  defaultValue: NORMAL
+                  remarks: "LOW / NORMAL / HIGH / URGENT"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: assignee_id
+                  type: UUID
+                  remarks: "Исполнитель"
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_tasks_assignee
+                    references: users(id)
+              - column:
+                  name: created_by_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_tasks_created_by
+                    references: users(id)
+              - column:
+                  name: entity_type
+                  type: VARCHAR(50)
+                  remarks: "DEAL / CONTACT / COMPANY (полиморфная связь)"
+              - column:
+                  name: entity_id
+                  type: UUID
+              - column:
+                  name: due_date
+                  type: TIMESTAMPTZ
+                  remarks: "Срок выполнения"
+              - column:
+                  name: completed_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: custom_data
+                  type: JSONB
+                  defaultValueComputed: "'{}'::jsonb"
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: deleted_at
+                  type: TIMESTAMPTZ
+
+  - changeSet:
+      id: 010-02a-idx-tasks-tenant
+      author: reblcrm
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: tasks
+                indexName: idx_tasks_tenant_id
+      changes:
+        - createIndex:
+            tableName: tasks
+            indexName: idx_tasks_tenant_id
+            columns:
+              - column:
+                  name: tenant_id
+
+  - changeSet:
+      id: 010-02b-idx-tasks-tenant-assignee-status
+      author: reblcrm
+      comment: "Составной: задачи исполнителя с фильтром по статусу"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: tasks
+                indexName: idx_tasks_tenant_assignee_status
+      changes:
+        - createIndex:
+            tableName: tasks
+            indexName: idx_tasks_tenant_assignee_status
+            columns:
+              - column:
+                  name: tenant_id
+              - column:
+                  name: assignee_id
+              - column:
+                  name: status
+
+  - changeSet:
+      id: 010-02c-idx-tasks-tenant-due
+      author: reblcrm
+      comment: "Составной: просроченные задачи и напоминания"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: tasks
+                indexName: idx_tasks_tenant_due
+      changes:
+        - createIndex:
+            tableName: tasks
+            indexName: idx_tasks_tenant_due
+            columns:
+              - column:
+                  name: tenant_id
+              - column:
+                  name: due_date
+
+  - changeSet:
+      id: 010-02d-idx-tasks-tenant-entity
+      author: reblcrm
+      comment: "Составной: задачи по связанной сущности (для карточки deal/contact)"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: tasks
+                indexName: idx_tasks_tenant_entity
+      changes:
+        - createIndex:
+            tableName: tasks
+            indexName: idx_tasks_tenant_entity
+            columns:
+              - column:
+                  name: tenant_id
+              - column:
+                  name: entity_type
+              - column:
+                  name: entity_id
+
+  - changeSet:
+      id: 010-02e-idx-tasks-custom-data-gin
+      author: reblcrm
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: tasks
+                indexName: idx_tasks_custom_data
+      changes:
+        - sql:
+            sql: CREATE INDEX IF NOT EXISTS idx_tasks_custom_data ON tasks USING GIN (custom_data);
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS idx_tasks_custom_data;
+
+  - changeSet:
+      id: 010-03-enable-rls-tasks
+      author: reblcrm
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE tasks FORCE ROW LEVEL SECURITY;
+
+              DROP POLICY IF EXISTS tenant_isolation ON tasks;
+              CREATE POLICY tenant_isolation ON tasks
+                USING (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)
+                WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
+
+  - changeSet:
+      id: 010-04-grant-tasks
+      author: reblcrm
+      changes:
+        - sql:
+            sql: GRANT SELECT, INSERT, UPDATE, DELETE ON tasks TO app_user;

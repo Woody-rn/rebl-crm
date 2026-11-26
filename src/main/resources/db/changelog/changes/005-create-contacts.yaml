@@ -2,6 +2,7 @@ databaseChangeLog:
   - changeSet:
       id: 005-01-create-contacts
       author: reblcrm
+      comment: "Контакты клиентов. company_id nullable — поддержка B2C (репетиторы, фрилансеры)"
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -76,12 +77,10 @@ databaseChangeLog:
                   name: deleted_at
                   type: TIMESTAMPTZ
 
-  # ===== СОСТАВНЫЕ ИНДЕКСЫ (с учётом RLS) =====
-
   - changeSet:
-      id: 005-02a-create-contacts-tenant-index
+      id: 005-02a-idx-contacts-tenant
       author: reblcrm
-      comment: "Базовый индекс по tenant_id — для запросов 'все контакты тенанта'"
+      comment: "Базовый индекс по tenant_id"
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -97,9 +96,9 @@ databaseChangeLog:
                   name: tenant_id
 
   - changeSet:
-      id: 005-02b-create-contacts-tenant-phone-index
+      id: 005-02b-idx-contacts-tenant-phone
       author: reblcrm
-      comment: "Составной индекс для поиска контакта по телефону в рамках тенанта (покрывает RLS)"
+      comment: "Составной: поиск по телефону в рамках тенанта (покрывает RLS)"
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -117,9 +116,9 @@ databaseChangeLog:
                   name: phone
 
   - changeSet:
-      id: 005-02c-create-contacts-tenant-email-index
+      id: 005-02c-idx-contacts-tenant-email
       author: reblcrm
-      comment: "Составной индекс для поиска контакта по email в рамках тенанта"
+      comment: "Составной: поиск по email в рамках тенанта"
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -137,9 +136,9 @@ databaseChangeLog:
                   name: email
 
   - changeSet:
-      id: 005-02d-create-contacts-tenant-telegram-index
+      id: 005-02d-idx-contacts-tenant-telegram
       author: reblcrm
-      comment: "Составной индекс для поиска контакта по Telegram chat_id в рамках тенанта"
+      comment: "Составной: поиск по Telegram chat_id в рамках тенанта"
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -157,7 +156,27 @@ databaseChangeLog:
                   name: telegram_chat_id
 
   - changeSet:
-      id: 005-02e-create-contacts-custom-data-gin-index
+      id: 005-02e-idx-contacts-tenant-company
+      author: reblcrm
+      comment: "Составной: поиск контактов компании в рамках тенанта"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: contacts
+                indexName: idx_contacts_tenant_company
+      changes:
+        - createIndex:
+            tableName: contacts
+            indexName: idx_contacts_tenant_company
+            columns:
+              - column:
+                  name: tenant_id
+              - column:
+                  name: company_id
+
+  - changeSet:
+      id: 005-02f-idx-contacts-custom-data-gin
       author: reblcrm
       comment: "GIN-индекс для поиска по кастомным полям (JSONB)"
       preConditions:
@@ -171,7 +190,7 @@ databaseChangeLog:
             sql: CREATE INDEX IF NOT EXISTS idx_contacts_custom_data ON contacts USING GIN (custom_data);
       rollback:
         - sql:
-            sql: DROP INDEX IF NOT EXISTS idx_contacts_custom_data;
+            sql: DROP INDEX IF EXISTS idx_contacts_custom_data;
 
   - changeSet:
       id: 005-03-enable-rls-contacts

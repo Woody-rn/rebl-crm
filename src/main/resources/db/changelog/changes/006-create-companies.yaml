@@ -1,0 +1,189 @@
+databaseChangeLog:
+  - changeSet:
+      id: 006-01-create-companies
+      author: reblcrm
+      comment: "Юрлица клиентов. Nullable в contacts.company_id — поддержка B2C"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: companies
+      changes:
+        - createTable:
+            tableName: companies
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_companies_tenant
+                    references: tenants(id)
+              - column:
+                  name: name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: inn
+                  type: VARCHAR(20)
+              - column:
+                  name: kpp
+                  type: VARCHAR(20)
+              - column:
+                  name: industry
+                  type: VARCHAR(100)
+              - column:
+                  name: website
+                  type: VARCHAR(255)
+              - column:
+                  name: email
+                  type: VARCHAR(255)
+              - column:
+                  name: phone
+                  type: VARCHAR(50)
+              - column:
+                  name: address
+                  type: TEXT
+              - column:
+                  name: custom_data
+                  type: JSONB
+                  defaultValueComputed: "'{}'::jsonb"
+              - column:
+                  name: owner_id
+                  type: UUID
+                  constraints:
+                    foreignKeyName: fk_companies_owner
+                    references: users(id)
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: deleted_at
+                  type: TIMESTAMPTZ
+
+  - changeSet:
+      id: 006-02a-idx-companies-tenant
+      author: reblcrm
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: companies
+                indexName: idx_companies_tenant_id
+      changes:
+        - createIndex:
+            tableName: companies
+            indexName: idx_companies_tenant_id
+            columns:
+              - column:
+                  name: tenant_id
+
+  - changeSet:
+      id: 006-02b-idx-companies-tenant-name
+      author: reblcrm
+      comment: "Составной: поиск компании по имени в рамках тенанта"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: companies
+                indexName: idx_companies_tenant_name
+      changes:
+        - createIndex:
+            tableName: companies
+            indexName: idx_companies_tenant_name
+            columns:
+              - column:
+                  name: tenant_id
+              - column:
+                  name: name
+
+  - changeSet:
+      id: 006-02c-idx-companies-tenant-inn
+      author: reblcrm
+      comment: "Частичный составной индекс: поиск по ИНН (только если ИНН заполнен)"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: companies
+                indexName: idx_companies_tenant_inn
+      changes:
+        - sql:
+            sql: CREATE INDEX IF NOT EXISTS idx_companies_tenant_inn ON companies (tenant_id, inn) WHERE inn IS NOT NULL;
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS idx_companies_tenant_inn;
+
+  - changeSet:
+      id: 006-02d-idx-companies-custom-data-gin
+      author: reblcrm
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: companies
+                indexName: idx_companies_custom_data
+      changes:
+        - sql:
+            sql: CREATE INDEX IF NOT EXISTS idx_companies_custom_data ON companies USING GIN (custom_data);
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS idx_companies_custom_data;
+
+  - changeSet:
+      id: 006-03-add-contacts-company-fk
+      author: reblcrm
+      comment: "Добавляем FK contacts.company_id -> companies(id)"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - foreignKeyConstraintExists:
+                foreignKeyName: fk_contacts_company
+                foreignKeyTableName: contacts
+      changes:
+        - addForeignKeyConstraint:
+            baseTableName: contacts
+            baseColumnNames: company_id
+            constraintName: fk_contacts_company
+            referencedTableName: companies
+            referencedColumnNames: id
+            onDelete: SET NULL
+            onUpdate: RESTRICT
+
+  - changeSet:
+      id: 006-04-enable-rls-companies
+      author: reblcrm
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE companies FORCE ROW LEVEL SECURITY;
+
+              DROP POLICY IF EXISTS tenant_isolation ON companies;
+              CREATE POLICY tenant_isolation ON companies
+                USING (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)
+                WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
+
+  - changeSet:
+      id: 006-05-grant-companies
+      author: reblcrm
+      changes:
+        - sql:
+            sql: GRANT SELECT, INSERT, UPDATE, DELETE ON companies TO app_user;

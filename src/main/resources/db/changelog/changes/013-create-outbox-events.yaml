@@ -1,0 +1,148 @@
+databaseChangeLog:
+  - changeSet:
+      id: 013-01-create-outbox-events
+      author: reblcrm
+      comment: "Transactional Outbox. Системная очередь без RLS, читается фоновым воркером"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: outbox_events
+      changes:
+        - createTable:
+            tableName: outbox_events
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  remarks: "Для маршрутизации и аудита"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: aggregate_type
+                  type: VARCHAR(100)
+                  remarks: "DEAL / CONTACT / TASK / BOOKING"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: aggregate_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: event_type
+                  type: VARCHAR(100)
+                  remarks: "DEAL_CREATED / DEAL_WON / TASK_DUE_SOON / BOOKING_CONFIRMED"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: payload
+                  type: JSONB
+                  remarks: "Данные события"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(20)
+                  defaultValue: PENDING
+                  remarks: "PENDING / PROCESSING / PROCESSED / FAILED / DEAD"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: retry_count
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: last_error
+                  type: TEXT
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: processed_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: scheduled_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+                  remarks: "Когда обработать (для retry с задержкой)"
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 013-02a-idx-outbox-tenant
+      author: reblcrm
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: outbox_events
+                indexName: idx_outbox_tenant_id
+      changes:
+        - createIndex:
+            tableName: outbox_events
+            indexName: idx_outbox_tenant_id
+            columns:
+              - column:
+                  name: tenant_id
+
+  - changeSet:
+      id: 013-02b-idx-outbox-status-scheduled
+      author: reblcrm
+      comment: "Составной: для воркера, который забирает события на обработку"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: outbox_events
+                indexName: idx_outbox_status_scheduled
+      changes:
+        - createIndex:
+            tableName: outbox_events
+            indexName: idx_outbox_status_scheduled
+            columns:
+              - column:
+                  name: status
+              - column:
+                  name: scheduled_at
+
+  - changeSet:
+      id: 013-02c-idx-outbox-aggregate
+      author: reblcrm
+      comment: "Составной: события по агрегату (для аудита)"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: outbox_events
+                indexName: idx_outbox_aggregate
+      changes:
+        - createIndex:
+            tableName: outbox_events
+            indexName: idx_outbox_aggregate
+            columns:
+              - column:
+                  name: aggregate_type
+              - column:
+                  name: aggregate_id
+
+  # RLS намеренно НЕ включаем: фоновый @Scheduled воркер читает события по всем тенантам без tenant context
+  - changeSet:
+      id: 013-03-grant-outbox-events
+      author: reblcrm
+      changes:
+        - sql:
+            sql: |
+              GRANT SELECT, INSERT, UPDATE, DELETE ON outbox_events TO app_user;
+              GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO app_user;

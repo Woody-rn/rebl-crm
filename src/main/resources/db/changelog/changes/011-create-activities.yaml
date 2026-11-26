@@ -1,0 +1,184 @@
+databaseChangeLog:
+  - changeSet:
+      id: 011-01-create-activities
+      author: reblcrm
+      comment: "История взаимодействий. Полиморфная связь. Типы: CALL, EMAIL, MEETING, TELEGRAM_MESSAGE, NOTE, DEAL_STAGE_CHANGE, etc."
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: activities
+      changes:
+        - createTable:
+            tableName: activities
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_activities_tenant
+                    references: tenants(id)
+              - column:
+                  name: type
+                  type: VARCHAR(50)
+                  remarks: "CALL, EMAIL, MEETING, TELEGRAM_MESSAGE, WHATSAPP_MESSAGE, NOTE, DEAL_STAGE_CHANGE, TASK_COMPLETED"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: subject
+                  type: VARCHAR(255)
+                  remarks: "Краткое описание (заголовок)"
+              - column:
+                  name: description
+                  type: TEXT
+                  remarks: "Детали (текст письма, расшифровка звонка, заметка)"
+              - column:
+                  name: entity_type
+                  type: VARCHAR(50)
+                  remarks: "DEAL / CONTACT / COMPANY"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: entity_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: author_id
+                  type: UUID
+                  remarks: "Кто создал (NULL для системных событий)"
+                  constraints:
+                    foreignKeyName: fk_activities_author
+                    references: users(id)
+              - column:
+                  name: occurred_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+                  remarks: "Когда произошло событие"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: duration_seconds
+                  type: INT
+                  remarks: "Для звонков и встреч"
+              - column:
+                  name: metadata
+                  type: JSONB
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Доп. данные: от кого/кому, запись звонка, результат и т.д."
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: deleted_at
+                  type: TIMESTAMPTZ
+
+  - changeSet:
+      id: 011-02a-idx-activities-tenant
+      author: reblcrm
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: activities
+                indexName: idx_activities_tenant_id
+      changes:
+        - createIndex:
+            tableName: activities
+            indexName: idx_activities_tenant_id
+            columns:
+              - column:
+                  name: tenant_id
+
+  - changeSet:
+      id: 011-02b-idx-activities-tenant-entity-occurred
+      author: reblcrm
+      comment: "Составной: лента активности по сущности, отсортированная по времени"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: activities
+                indexName: idx_activities_tenant_entity_occurred
+      changes:
+        - createIndex:
+            tableName: activities
+            indexName: idx_activities_tenant_entity_occurred
+            columns:
+              - column:
+                  name: tenant_id
+              - column:
+                  name: entity_type
+              - column:
+                  name: entity_id
+              - column:
+                  name: occurred_at
+
+  - changeSet:
+      id: 011-02c-idx-activities-tenant-type-occurred
+      author: reblcrm
+      comment: "Составной: фильтрация по типу активности (для отчётов)"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: activities
+                indexName: idx_activities_tenant_type_occurred
+      changes:
+        - createIndex:
+            tableName: activities
+            indexName: idx_activities_tenant_type_occurred
+            columns:
+              - column:
+                  name: tenant_id
+              - column:
+                  name: type
+              - column:
+                  name: occurred_at
+
+  - changeSet:
+      id: 011-02d-idx-activities-metadata-gin
+      author: reblcrm
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: activities
+                indexName: idx_activities_metadata
+      changes:
+        - sql:
+            sql: CREATE INDEX IF NOT EXISTS idx_activities_metadata ON activities USING GIN (metadata);
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS idx_activities_metadata;
+
+  - changeSet:
+      id: 011-03-enable-rls-activities
+      author: reblcrm
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE activities ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE activities FORCE ROW LEVEL SECURITY;
+
+              DROP POLICY IF EXISTS tenant_isolation ON activities;
+              CREATE POLICY tenant_isolation ON activities
+                USING (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)
+                WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
+
+  - changeSet:
+      id: 011-04-grant-activities
+      author: reblcrm
+      changes:
+        - sql:
+            sql: GRANT SELECT, INSERT, UPDATE, DELETE ON activities TO app_user;

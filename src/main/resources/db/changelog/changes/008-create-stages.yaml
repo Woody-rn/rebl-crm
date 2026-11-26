@@ -1,0 +1,137 @@
+databaseChangeLog:
+  - changeSet:
+      id: 008-01-create-stages
+      author: reblcrm
+      comment: "Этапы воронки. Привязаны к pipeline. sort_order определяет порядок на канбан-доске"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: stages
+      changes:
+        - createTable:
+            tableName: stages
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_stages_tenant
+                    references: tenants(id)
+              - column:
+                  name: pipeline_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_stages_pipeline
+                    references: pipelines(id)
+              - column:
+                  name: name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: color
+                  type: VARCHAR(20)
+              - column:
+                  name: sort_order
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: win_probability
+                  type: INT
+                  remarks: "Вероятность победы на этом этапе (0-100%)"
+              - column:
+                  name: is_final
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  remarks: "Финальный этап (won/lost)"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: final_type
+                  type: VARCHAR(20)
+                  remarks: "WON / LOST (только для is_final=true)"
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: deleted_at
+                  type: TIMESTAMPTZ
+
+  - changeSet:
+      id: 008-02a-idx-stages-tenant
+      author: reblcrm
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: stages
+                indexName: idx_stages_tenant_id
+      changes:
+        - createIndex:
+            tableName: stages
+            indexName: idx_stages_tenant_id
+            columns:
+              - column:
+                  name: tenant_id
+
+  - changeSet:
+      id: 008-02b-idx-stages-tenant-pipeline-sort
+      author: reblcrm
+      comment: "Составной: этапы воронки отсортированные (покрывает RLS)"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: stages
+                indexName: idx_stages_tenant_pipeline_sort
+      changes:
+        - createIndex:
+            tableName: stages
+            indexName: idx_stages_tenant_pipeline_sort
+            columns:
+              - column:
+                  name: tenant_id
+              - column:
+                  name: pipeline_id
+              - column:
+                  name: sort_order
+
+  - changeSet:
+      id: 008-03-enable-rls-stages
+      author: reblcrm
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE stages ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE stages FORCE ROW LEVEL SECURITY;
+
+              DROP POLICY IF EXISTS tenant_isolation ON stages;
+              CREATE POLICY tenant_isolation ON stages
+                USING (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)
+                WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
+
+  - changeSet:
+      id: 008-04-grant-stages
+      author: reblcrm
+      changes:
+        - sql:
+            sql: GRANT SELECT, INSERT, UPDATE, DELETE ON stages TO app_user;

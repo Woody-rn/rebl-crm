@@ -1,0 +1,117 @@
+databaseChangeLog:
+  - changeSet:
+      id: 007-01-create-pipelines
+      author: reblcrm
+      comment: "Воронки продаж. У тенанта может быть несколько воронок"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: pipelines
+      changes:
+        - createTable:
+            tableName: pipelines
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_pipelines_tenant
+                    references: tenants(id)
+              - column:
+                  name: name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: is_default
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: sort_order
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: deleted_at
+                  type: TIMESTAMPTZ
+
+  - changeSet:
+      id: 007-02a-idx-pipelines-tenant
+      author: reblcrm
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: pipelines
+                indexName: idx_pipelines_tenant_id
+      changes:
+        - createIndex:
+            tableName: pipelines
+            indexName: idx_pipelines_tenant_id
+            columns:
+              - column:
+                  name: tenant_id
+
+  - changeSet:
+      id: 007-02b-idx-pipelines-tenant-sort
+      author: reblcrm
+      comment: "Составной: список воронок тенанта отсортированный"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: pipelines
+                indexName: idx_pipelines_tenant_sort
+      changes:
+        - createIndex:
+            tableName: pipelines
+            indexName: idx_pipelines_tenant_sort
+            columns:
+              - column:
+                  name: tenant_id
+              - column:
+                  name: sort_order
+
+  - changeSet:
+      id: 007-03-enable-rls-pipelines
+      author: reblcrm
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE pipelines ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE pipelines FORCE ROW LEVEL SECURITY;
+
+              DROP POLICY IF EXISTS tenant_isolation ON pipelines;
+              CREATE POLICY tenant_isolation ON pipelines
+                USING (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)
+                WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
+
+  - changeSet:
+      id: 007-04-grant-pipelines
+      author: reblcrm
+      changes:
+        - sql:
+            sql: GRANT SELECT, INSERT, UPDATE, DELETE ON pipelines TO app_user;

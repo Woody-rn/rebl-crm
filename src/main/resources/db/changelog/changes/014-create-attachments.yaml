@@ -1,0 +1,135 @@
+databaseChangeLog:
+  - changeSet:
+      id: 014-01-create-attachments
+      author: reblcrm
+      comment: "Вложения к сущностям. Хранение в MinIO (S3). Полиморфная связь"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: attachments
+      changes:
+        - createTable:
+            tableName: attachments
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_attachments_tenant
+                    references: tenants(id)
+              - column:
+                  name: entity_type
+                  type: VARCHAR(50)
+                  remarks: "DEAL / CONTACT / COMPANY / ACTIVITY / TASK"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: entity_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: file_name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: mime_type
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: file_size
+                  type: BIGINT
+                  remarks: "Размер в байтах"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: storage_key
+                  type: VARCHAR(500)
+                  remarks: "Путь в MinIO (bucket + object key)"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: uploaded_by_id
+                  type: UUID
+                  constraints:
+                    foreignKeyName: fk_attachments_uploaded_by
+                    references: users(id)
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: deleted_at
+                  type: TIMESTAMPTZ
+
+  - changeSet:
+      id: 014-02a-idx-attachments-tenant
+      author: reblcrm
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: attachments
+                indexName: idx_attachments_tenant_id
+      changes:
+        - createIndex:
+            tableName: attachments
+            indexName: idx_attachments_tenant_id
+            columns:
+              - column:
+                  name: tenant_id
+
+  - changeSet:
+      id: 014-02b-idx-attachments-tenant-entity
+      author: reblcrm
+      comment: "Составной: вложения конкретной сущности"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: attachments
+                indexName: idx_attachments_tenant_entity
+      changes:
+        - createIndex:
+            tableName: attachments
+            indexName: idx_attachments_tenant_entity
+            columns:
+              - column:
+                  name: tenant_id
+              - column:
+                  name: entity_type
+              - column:
+                  name: entity_id
+
+  - changeSet:
+      id: 014-03-enable-rls-attachments
+      author: reblcrm
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE attachments ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE attachments FORCE ROW LEVEL SECURITY;
+
+              DROP POLICY IF EXISTS tenant_isolation ON attachments;
+              CREATE POLICY tenant_isolation ON attachments
+                USING (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)
+                WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
+
+  - changeSet:
+      id: 014-04-grant-attachments
+      author: reblcrm
+      changes:
+        - sql:
+            sql: GRANT SELECT, INSERT, UPDATE, DELETE ON attachments TO app_user;

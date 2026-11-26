@@ -1,0 +1,245 @@
+databaseChangeLog:
+  - changeSet:
+      id: 009-01-create-deals
+      author: reblcrm
+      comment: "Сделки. Связи: pipeline/stage (воронка), contact/company (nullable), owner (менеджер)"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: deals
+      changes:
+        - createTable:
+            tableName: deals
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_deals_tenant
+                    references: tenants(id)
+              - column:
+                  name: pipeline_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_deals_pipeline
+                    references: pipelines(id)
+              - column:
+                  name: stage_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_deals_stage
+                    references: stages(id)
+              - column:
+                  name: title
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: TEXT
+              - column:
+                  name: amount
+                  type: NUMERIC(15, 2)
+                  remarks: "Сумма сделки. NULL = сумма не определена"
+              - column:
+                  name: currency
+                  type: VARCHAR(3)
+                  defaultValue: RUB
+                  constraints:
+                    nullable: false
+              - column:
+                  name: contact_id
+                  type: UUID
+                  constraints:
+                    foreignKeyName: fk_deals_contact
+                    references: contacts(id)
+              - column:
+                  name: company_id
+                  type: UUID
+                  constraints:
+                    foreignKeyName: fk_deals_company
+                    references: companies(id)
+              - column:
+                  name: owner_id
+                  type: UUID
+                  remarks: "Ответственный менеджер"
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_deals_owner
+                    references: users(id)
+              - column:
+                  name: expected_close_date
+                  type: DATE
+              - column:
+                  name: closed_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: lost_reason
+                  type: VARCHAR(255)
+              - column:
+                  name: source
+                  type: VARCHAR(100)
+                  remarks: "Источник лида (сайт, Telegram, рекомендация...)"
+              - column:
+                  name: custom_data
+                  type: JSONB
+                  defaultValueComputed: "'{}'::jsonb"
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: deleted_at
+                  type: TIMESTAMPTZ
+
+  - changeSet:
+      id: 009-02a-idx-deals-tenant
+      author: reblcrm
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: deals
+                indexName: idx_deals_tenant_id
+      changes:
+        - createIndex:
+            tableName: deals
+            indexName: idx_deals_tenant_id
+            columns:
+              - column:
+                  name: tenant_id
+
+  - changeSet:
+      id: 009-02b-idx-deals-tenant-stage
+      author: reblcrm
+      comment: "Составной: сделки на канбан-доске (фильтр по этапу)"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: deals
+                indexName: idx_deals_tenant_stage
+      changes:
+        - createIndex:
+            tableName: deals
+            indexName: idx_deals_tenant_stage
+            columns:
+              - column:
+                  name: tenant_id
+              - column:
+                  name: stage_id
+
+  - changeSet:
+      id: 009-02c-idx-deals-tenant-owner
+      author: reblcrm
+      comment: "Составной: сделки менеджера (для 'Мои сделки')"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: deals
+                indexName: idx_deals_tenant_owner
+      changes:
+        - createIndex:
+            tableName: deals
+            indexName: idx_deals_tenant_owner
+            columns:
+              - column:
+                  name: tenant_id
+              - column:
+                  name: owner_id
+
+  - changeSet:
+      id: 009-02d-idx-deals-tenant-contact
+      author: reblcrm
+      comment: "Составной: сделки контакта (для карточки контакта)"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: deals
+                indexName: idx_deals_tenant_contact
+      changes:
+        - createIndex:
+            tableName: deals
+            indexName: idx_deals_tenant_contact
+            columns:
+              - column:
+                  name: tenant_id
+              - column:
+                  name: contact_id
+
+  - changeSet:
+      id: 009-02e-idx-deals-tenant-expected-close
+      author: reblcrm
+      comment: "Составной: прогноз закрытия (для отчётов)"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: deals
+                indexName: idx_deals_tenant_expected_close
+      changes:
+        - createIndex:
+            tableName: deals
+            indexName: idx_deals_tenant_expected_close
+            columns:
+              - column:
+                  name: tenant_id
+              - column:
+                  name: expected_close_date
+
+  - changeSet:
+      id: 009-02f-idx-deals-custom-data-gin
+      author: reblcrm
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: deals
+                indexName: idx_deals_custom_data
+      changes:
+        - sql:
+            sql: CREATE INDEX IF NOT EXISTS idx_deals_custom_data ON deals USING GIN (custom_data);
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS idx_deals_custom_data;
+
+  - changeSet:
+      id: 009-03-enable-rls-deals
+      author: reblcrm
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE deals ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE deals FORCE ROW LEVEL SECURITY;
+
+              DROP POLICY IF EXISTS tenant_isolation ON deals;
+              CREATE POLICY tenant_isolation ON deals
+                USING (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)
+                WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
+
+  - changeSet:
+      id: 009-04-grant-deals
+      author: reblcrm
+      changes:
+        - sql:
+            sql: GRANT SELECT, INSERT, UPDATE, DELETE ON deals TO app_user;

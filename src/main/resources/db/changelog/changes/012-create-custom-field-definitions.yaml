@@ -1,0 +1,182 @@
+databaseChangeLog:
+  - changeSet:
+      id: 012-01-create-custom-field-definitions
+      author: reblcrm
+      comment: "Метаданные кастомных полей. Определяют, какие поля может создавать тенант для сущностей"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: custom_field_definitions
+      changes:
+        - createTable:
+            tableName: custom_field_definitions
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_custom_fields_tenant
+                    references: tenants(id)
+              - column:
+                  name: entity_type
+                  type: VARCHAR(50)
+                  remarks: "CONTACT / DEAL / COMPANY / TASK"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: field_key
+                  type: VARCHAR(100)
+                  remarks: "Технический ключ (source, birth_date, segment)"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: field_label
+                  type: VARCHAR(255)
+                  remarks: "Отображаемое имя ('Источник лида', 'Дата рождения')"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: field_type
+                  type: VARCHAR(50)
+                  remarks: "TEXT / NUMBER / DATE / DATETIME / SELECT / MULTISELECT / BOOLEAN / URL / EMAIL / PHONE"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: options
+                  type: JSONB
+                  remarks: "Для SELECT/MULTISELECT: массив вариантов"
+              - column:
+                  name: default_value
+                  type: TEXT
+              - column:
+                  name: is_required
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: is_searchable
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  remarks: "Индексируется ли поле для быстрого поиска"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: validation_regex
+                  type: VARCHAR(255)
+              - column:
+                  name: min_value
+                  type: NUMERIC(15, 2)
+              - column:
+                  name: max_value
+                  type: NUMERIC(15, 2)
+              - column:
+                  name: sort_order
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: group_name
+                  type: VARCHAR(100)
+                  remarks: "Группа полей в UI (например, 'Соцсети', 'Финансы')"
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: deleted_at
+                  type: TIMESTAMPTZ
+
+  - changeSet:
+      id: 012-02a-idx-custom-fields-tenant
+      author: reblcrm
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: custom_field_definitions
+                indexName: idx_custom_fields_tenant_id
+      changes:
+        - createIndex:
+            tableName: custom_field_definitions
+            indexName: idx_custom_fields_tenant_id
+            columns:
+              - column:
+                  name: tenant_id
+
+  - changeSet:
+      id: 012-02b-idx-custom-fields-tenant-entity
+      author: reblcrm
+      comment: "Составной: список полей для конкретной сущности тенанта"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: custom_field_definitions
+                indexName: idx_custom_fields_tenant_entity
+      changes:
+        - createIndex:
+            tableName: custom_field_definitions
+            indexName: idx_custom_fields_tenant_entity
+            columns:
+              - column:
+                  name: tenant_id
+              - column:
+                  name: entity_type
+              - column:
+                  name: sort_order
+
+  - changeSet:
+      id: 012-03-unique-custom-field-key
+      author: reblcrm
+      comment: "Уникальность: один field_key на тенанта и тип сущности"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: custom_field_definitions
+                indexName: uq_custom_fields_tenant_entity_key
+      changes:
+        - sql:
+            sql: CREATE UNIQUE INDEX IF NOT EXISTS uq_custom_fields_tenant_entity_key ON custom_field_definitions (tenant_id, entity_type, field_key) WHERE deleted_at IS NULL;
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS uq_custom_fields_tenant_entity_key;
+
+  - changeSet:
+      id: 012-04-enable-rls-custom-fields
+      author: reblcrm
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE custom_field_definitions ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE custom_field_definitions FORCE ROW LEVEL SECURITY;
+
+              DROP POLICY IF EXISTS tenant_isolation ON custom_field_definitions;
+              CREATE POLICY tenant_isolation ON custom_field_definitions
+                USING (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)
+                WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
+
+  - changeSet:
+      id: 012-05-grant-custom-fields
+      author: reblcrm
+      changes:
+        - sql:
+            sql: GRANT SELECT, INSERT, UPDATE, DELETE ON custom_field_definitions TO app_user;
