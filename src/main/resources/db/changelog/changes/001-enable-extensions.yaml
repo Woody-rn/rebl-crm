@@ -1,0 +1,9 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-01-enable-extensions
+      author: reblcrm
+      changes:
+        - sql:
+            sql: |
+              CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+              CREATE EXTENSION IF NOT EXISTS "btree_gist";
