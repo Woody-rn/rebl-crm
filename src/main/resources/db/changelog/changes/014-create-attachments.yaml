@@ -2,7 +2,7 @@ databaseChangeLog:
   - changeSet:
       id: 014-01-create-attachments
       author: reblcrm
-      comment: "Вложения к сущностям. Хранение в MinIO (S3). Полиморфная связь"
+      comment: "Вложения к сущностям в MinIO с составным внешним ключом на загрузившего пользователя"
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -61,9 +61,6 @@ databaseChangeLog:
               - column:
                   name: uploaded_by_id
                   type: UUID
-                  constraints:
-                    foreignKeyName: fk_attachments_uploaded_by
-                    references: users(id)
               - column:
                   name: created_at
                   type: TIMESTAMPTZ
@@ -73,6 +70,16 @@ databaseChangeLog:
               - column:
                   name: deleted_at
                   type: TIMESTAMPTZ
+        - addUniqueConstraint:
+            tableName: attachments
+            columnNames: tenant_id, id
+            constraintName: uq_attachments_tenant_id_id
+        - addForeignKeyConstraint:
+            baseTableName: attachments
+            baseColumnNames: tenant_id, uploaded_by_id
+            constraintName: fk_attachments_tenant_uploaded_by
+            referencedTableName: users
+            referencedColumnNames: tenant_id, id
 
   - changeSet:
       id: 014-02a-idx-attachments-tenant

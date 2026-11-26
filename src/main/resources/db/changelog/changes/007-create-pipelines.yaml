@@ -2,7 +2,7 @@ databaseChangeLog:
   - changeSet:
       id: 007-01-create-pipelines
       author: reblcrm
-      comment: "Воронки продаж. У тенанта может быть несколько воронок"
+      comment: "Воронки продаж. У тенанта может быть несколько воронок (например, 'Продажи', 'Партнёрство')"
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -39,7 +39,7 @@ databaseChangeLog:
               - column:
                   name: sort_order
                   type: INT
-                  defaultValueNumeric: 0
+                  defaultValueNumeric: "0"
                   constraints:
                     nullable: false
               - column:
@@ -57,6 +57,22 @@ databaseChangeLog:
               - column:
                   name: deleted_at
                   type: TIMESTAMPTZ
+
+  - changeSet:
+      id: 007-01b-uq-pipelines-tenant-id
+      author: reblcrm
+      comment: "Уникальность (tenant_id, id) для составных внешних ключей"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - uniqueConstraintExists:
+                tableName: pipelines
+                constraintName: uq_pipelines_tenant_id_id
+      changes:
+        - addUniqueConstraint:
+            tableName: pipelines
+            columnNames: tenant_id, id
+            constraintName: uq_pipelines_tenant_id_id
 
   - changeSet:
       id: 007-02a-idx-pipelines-tenant

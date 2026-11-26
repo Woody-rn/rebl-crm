@@ -2,7 +2,7 @@ databaseChangeLog:
   - changeSet:
       id: 009-01-create-deals
       author: reblcrm
-      comment: "Сделки. Связи: pipeline/stage (воронка), contact/company (nullable), owner (менеджер)"
+      comment: "Сделки с составными внешними ключами для изоляции между тенантами"
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -30,15 +30,11 @@ databaseChangeLog:
                   type: UUID
                   constraints:
                     nullable: false
-                    foreignKeyName: fk_deals_pipeline
-                    references: pipelines(id)
               - column:
                   name: stage_id
                   type: UUID
                   constraints:
                     nullable: false
-                    foreignKeyName: fk_deals_stage
-                    references: stages(id)
               - column:
                   name: title
                   type: VARCHAR(255)
@@ -60,23 +56,15 @@ databaseChangeLog:
               - column:
                   name: contact_id
                   type: UUID
-                  constraints:
-                    foreignKeyName: fk_deals_contact
-                    references: contacts(id)
               - column:
                   name: company_id
                   type: UUID
-                  constraints:
-                    foreignKeyName: fk_deals_company
-                    references: companies(id)
               - column:
                   name: owner_id
                   type: UUID
                   remarks: "Ответственный менеджер"
                   constraints:
                     nullable: false
-                    foreignKeyName: fk_deals_owner
-                    references: users(id)
               - column:
                   name: expected_close_date
                   type: DATE
@@ -109,6 +97,42 @@ databaseChangeLog:
               - column:
                   name: deleted_at
                   type: TIMESTAMPTZ
+        - addUniqueConstraint:
+            tableName: deals
+            columnNames: tenant_id, id
+            constraintName: uq_deals_tenant_id_id
+        - addForeignKeyConstraint:
+            baseTableName: deals
+            baseColumnNames: tenant_id, pipeline_id
+            constraintName: fk_deals_tenant_pipeline
+            referencedTableName: pipelines
+            referencedColumnNames: tenant_id, id
+        - addForeignKeyConstraint:
+            baseTableName: deals
+            baseColumnNames: tenant_id, stage_id
+            constraintName: fk_deals_tenant_stage
+            referencedTableName: stages
+            referencedColumnNames: tenant_id, id
+        - addForeignKeyConstraint:
+            baseTableName: deals
+            baseColumnNames: tenant_id, contact_id
+            constraintName: fk_deals_tenant_contact
+            referencedTableName: contacts
+            referencedColumnNames: tenant_id, id
+            onDelete: SET NULL
+        - addForeignKeyConstraint:
+            baseTableName: deals
+            baseColumnNames: tenant_id, company_id
+            constraintName: fk_deals_tenant_company
+            referencedTableName: companies
+            referencedColumnNames: tenant_id, id
+            onDelete: SET NULL
+        - addForeignKeyConstraint:
+            baseTableName: deals
+            baseColumnNames: tenant_id, owner_id
+            constraintName: fk_deals_tenant_owner
+            referencedTableName: users
+            referencedColumnNames: tenant_id, id
 
   - changeSet:
       id: 009-02a-idx-deals-tenant

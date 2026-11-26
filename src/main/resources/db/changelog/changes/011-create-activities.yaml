@@ -2,7 +2,7 @@ databaseChangeLog:
   - changeSet:
       id: 011-01-create-activities
       author: reblcrm
-      comment: "История взаимодействий. Полиморфная связь. Типы: CALL, EMAIL, MEETING, TELEGRAM_MESSAGE, NOTE, DEAL_STAGE_CHANGE, etc."
+      comment: "История взаимодействий с составным внешним ключом на автора внутри тенанта"
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -54,9 +54,6 @@ databaseChangeLog:
                   name: author_id
                   type: UUID
                   remarks: "Кто создал (NULL для системных событий)"
-                  constraints:
-                    foreignKeyName: fk_activities_author
-                    references: users(id)
               - column:
                   name: occurred_at
                   type: TIMESTAMPTZ
@@ -82,6 +79,16 @@ databaseChangeLog:
               - column:
                   name: deleted_at
                   type: TIMESTAMPTZ
+        - addUniqueConstraint:
+            tableName: activities
+            columnNames: tenant_id, id
+            constraintName: uq_activities_tenant_id_id
+        - addForeignKeyConstraint:
+            baseTableName: activities
+            baseColumnNames: tenant_id, author_id
+            constraintName: fk_activities_tenant_author
+            referencedTableName: users
+            referencedColumnNames: tenant_id, id
 
   - changeSet:
       id: 011-02a-idx-activities-tenant

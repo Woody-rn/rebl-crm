@@ -30,8 +30,6 @@ databaseChangeLog:
                   type: UUID
                   constraints:
                     nullable: false
-                    foreignKeyName: fk_stages_pipeline
-                    references: pipelines(id)
               - column:
                   name: name
                   type: VARCHAR(255)
@@ -75,6 +73,42 @@ databaseChangeLog:
               - column:
                   name: deleted_at
                   type: TIMESTAMPTZ
+
+  - changeSet:
+      id: 008-01b-uq-stages-tenant-id
+      author: reblcrm
+      comment: "Уникальность (tenant_id, id) для составных внешних ключей"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - uniqueConstraintExists:
+                tableName: stages
+                constraintName: uq_stages_tenant_id_id
+      changes:
+        - addUniqueConstraint:
+            tableName: stages
+            columnNames: tenant_id, id
+            constraintName: uq_stages_tenant_id_id
+
+  - changeSet:
+      id: 008-01c-fk-stages-pipeline
+      author: reblcrm
+      comment: "Составной FK: воронка этапа должна принадлежать тому же тенанту"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - foreignKeyConstraintExists:
+                foreignKeyName: fk_stages_pipeline
+                foreignKeyTableName: stages
+      changes:
+        - addForeignKeyConstraint:
+            baseTableName: stages
+            baseColumnNames: tenant_id, pipeline_id
+            constraintName: fk_stages_pipeline
+            referencedTableName: pipelines
+            referencedColumnNames: tenant_id, id
+            onDelete: RESTRICT
+            onUpdate: RESTRICT
 
   - changeSet:
       id: 008-02a-idx-stages-tenant

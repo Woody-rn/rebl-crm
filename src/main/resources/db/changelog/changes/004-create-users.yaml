@@ -70,6 +70,22 @@ databaseChangeLog:
                   type: TIMESTAMPTZ
 
   - changeSet:
+      id: 004-01b-uq-users-tenant-id
+      author: reblcrm
+      comment: "Уникальность (tenant_id, id) для составных внешних ключей"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - uniqueConstraintExists:
+                tableName: users
+                constraintName: uq_users_tenant_id_id
+      changes:
+        - addUniqueConstraint:
+            tableName: users
+            columnNames: tenant_id, id
+            constraintName: uq_users_tenant_id_id
+
+  - changeSet:
       id: 004-02-create-users-indexes
       author: reblcrm
       preConditions:

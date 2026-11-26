@@ -58,9 +58,6 @@ databaseChangeLog:
               - column:
                   name: owner_id
                   type: UUID
-                  constraints:
-                    foreignKeyName: fk_companies_owner
-                    references: users(id)
               - column:
                   name: created_at
                   type: TIMESTAMPTZ
@@ -76,6 +73,42 @@ databaseChangeLog:
               - column:
                   name: deleted_at
                   type: TIMESTAMPTZ
+
+  - changeSet:
+      id: 006-01b-uq-companies-tenant-id
+      author: reblcrm
+      comment: "Уникальность (tenant_id, id) для составных внешних ключей"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - uniqueConstraintExists:
+                tableName: companies
+                constraintName: uq_companies_tenant_id_id
+      changes:
+        - addUniqueConstraint:
+            tableName: companies
+            columnNames: tenant_id, id
+            constraintName: uq_companies_tenant_id_id
+
+  - changeSet:
+      id: 006-01c-fk-companies-owner
+      author: reblcrm
+      comment: "Составной FK: ответственный менеджер должен принадлежать тому же тенанту"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - foreignKeyConstraintExists:
+                foreignKeyName: fk_companies_owner
+                foreignKeyTableName: companies
+      changes:
+        - addForeignKeyConstraint:
+            baseTableName: companies
+            baseColumnNames: tenant_id, owner_id
+            constraintName: fk_companies_owner
+            referencedTableName: users
+            referencedColumnNames: tenant_id, id
+            onDelete: RESTRICT
+            onUpdate: RESTRICT
 
   - changeSet:
       id: 006-02a-idx-companies-tenant
@@ -150,7 +183,7 @@ databaseChangeLog:
   - changeSet:
       id: 006-03-add-contacts-company-fk
       author: reblcrm
-      comment: "Добавляем FK contacts.company_id -> companies(id)"
+      comment: "Составной FK: компания контакта должна принадлежать тому же тенанту"
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -160,11 +193,11 @@ databaseChangeLog:
       changes:
         - addForeignKeyConstraint:
             baseTableName: contacts
-            baseColumnNames: company_id
+            baseColumnNames: tenant_id, company_id
             constraintName: fk_contacts_company
             referencedTableName: companies
-            referencedColumnNames: id
-            onDelete: SET NULL
+            referencedColumnNames: tenant_id, id
+            onDelete: RESTRICT
             onUpdate: RESTRICT
 
   - changeSet:

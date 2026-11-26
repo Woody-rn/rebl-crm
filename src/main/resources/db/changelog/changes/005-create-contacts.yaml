@@ -58,9 +58,6 @@ databaseChangeLog:
               - column:
                   name: owner_id
                   type: UUID
-                  constraints:
-                    foreignKeyName: fk_contacts_owner
-                    references: users(id)
               - column:
                   name: created_at
                   type: TIMESTAMPTZ
@@ -76,6 +73,42 @@ databaseChangeLog:
               - column:
                   name: deleted_at
                   type: TIMESTAMPTZ
+
+  - changeSet:
+      id: 005-01b-uq-contacts-tenant-id
+      author: reblcrm
+      comment: "Уникальность (tenant_id, id) для составных внешних ключей"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - uniqueConstraintExists:
+                tableName: contacts
+                constraintName: uq_contacts_tenant_id_id
+      changes:
+        - addUniqueConstraint:
+            tableName: contacts
+            columnNames: tenant_id, id
+            constraintName: uq_contacts_tenant_id_id
+
+  - changeSet:
+      id: 005-01c-fk-contacts-owner
+      author: reblcrm
+      comment: "Составной FK: ответственный менеджер должен принадлежать тому же тенанту"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - foreignKeyConstraintExists:
+                foreignKeyName: fk_contacts_owner
+                foreignKeyTableName: contacts
+      changes:
+        - addForeignKeyConstraint:
+            baseTableName: contacts
+            baseColumnNames: tenant_id, owner_id
+            constraintName: fk_contacts_owner
+            referencedTableName: users
+            referencedColumnNames: tenant_id, id
+            onDelete: RESTRICT
+            onUpdate: RESTRICT
 
   - changeSet:
       id: 005-02a-idx-contacts-tenant

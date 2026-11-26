@@ -2,7 +2,7 @@ databaseChangeLog:
   - changeSet:
       id: 010-01-create-tasks
       author: reblcrm
-      comment: "Задачи и напоминания. Полиморфная связь с сущностями через entity_type + entity_id"
+      comment: "Задачи и напоминания с составными внешними ключами на пользователей внутри тенанта"
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -53,15 +53,11 @@ databaseChangeLog:
                   remarks: "Исполнитель"
                   constraints:
                     nullable: false
-                    foreignKeyName: fk_tasks_assignee
-                    references: users(id)
               - column:
                   name: created_by_id
                   type: UUID
                   constraints:
                     nullable: false
-                    foreignKeyName: fk_tasks_created_by
-                    references: users(id)
               - column:
                   name: entity_type
                   type: VARCHAR(50)
@@ -95,6 +91,22 @@ databaseChangeLog:
               - column:
                   name: deleted_at
                   type: TIMESTAMPTZ
+        - addUniqueConstraint:
+            tableName: tasks
+            columnNames: tenant_id, id
+            constraintName: uq_tasks_tenant_id_id
+        - addForeignKeyConstraint:
+            baseTableName: tasks
+            baseColumnNames: tenant_id, assignee_id
+            constraintName: fk_tasks_tenant_assignee
+            referencedTableName: users
+            referencedColumnNames: tenant_id, id
+        - addForeignKeyConstraint:
+            baseTableName: tasks
+            baseColumnNames: tenant_id, created_by_id
+            constraintName: fk_tasks_tenant_created_by
+            referencedTableName: users
+            referencedColumnNames: tenant_id, id
 
   - changeSet:
       id: 010-02a-idx-tasks-tenant
